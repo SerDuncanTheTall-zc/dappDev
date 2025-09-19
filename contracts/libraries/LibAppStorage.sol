@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
+import "../facets/test/MockPriceOracle.sol"; // 導入接口;
+
+struct TokenInfo {
+    bool isSupported;
+    uint256 collateralFactor; // 抵押因子，例如 8000 代表 80%
+}
 
 // 这个结构体定义了 Diamond 的所有状态变量
 struct AppStorage {
@@ -36,6 +42,15 @@ struct AppStorage {
     bytes32 merkleRoot;
     // 記錄用戶是否已領取 Pull 模式空投
     mapping(address => bool) hasClaimed;
+
+    // --- 為 LendingFacet 添加的狀態變數 ---
+    IPriceOracle priceOracle;
+    // 映射：代幣地址 => 代幣資訊
+    mapping(address => TokenInfo) supportedTokens;
+    // 映射：用戶地址 => 代幣地址 => 存款金額
+    mapping(address => mapping(address => uint256)) userDeposits;
+    // 映射：用戶地址 => 代幣地址 => 借款金額
+    mapping(address => mapping(address => uint256)) userBorrows;
 }
 
 // 这个库提供了获取 Diamond 存储的方法

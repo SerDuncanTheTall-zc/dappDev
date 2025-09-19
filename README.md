@@ -1,125 +1,233 @@
-# Diamond-3-Hardhat Implementation
+# 多功能 DeFi 钻石合约 (Multi-Functional DeFi Diamond Contract)
 
-This is an implementation for [EIP-2535 Diamond Standard](https://github.com/ethereum/EIPs/issues/2535). To learn about other implementations go here: https://github.com/mudgen/diamond
+这是一个基于 **EIP-2535 钻石标准** 的多功能、可升级智能合约项目，旨在展示钻石模式在构建复杂 DeFi 应用中的强大能力和灵活性。
 
-The standard loupe functions have been gas-optimized in this implementation and can be called in on-chain transactions. However keep in mind that a diamond can have any number of functions and facets so it is still possible to get out-of-gas errors when calling loupe functions. Except for the `facetAddress` loupe function which has a fixed gas cost.
+## 核心架构：钻石标准 (EIP-2535)
 
-**Note:** The loupe functions in DiamondLoupeFacet.sol MUST be added to a diamond and are required by the EIP-2535 Diamonds standard.
+本项目围绕 EIP-2535 钻石标准构建，其核心优势包括：
 
-## Installation
+* **模块化**: 每个独立的功能（如质押、借贷）都被封装在称为 **Facet** 的独立合约中。
+* **可升级性**: 可以通过 `diamondCut` 函数，以原子方式（atomic）安全地新增、替换或移除功能，而无需重新部署整个系统。
+* **突破合约大小限制**: 通过将逻辑分散到多个 Facet 中，主合约（Diamond）可以无限扩展功能，不受以太坊 24KB 的合约大小限制。
+* **共享存储**: 所有 Facet 共享同一个状态存储空间（通过 `LibAppStorage.sol` 统一定义），使得不同功能模块之间可以无缝、高效地互动。
 
-1. Clone this repo:
-```console
-git clone git@github.com:mudgen/diamond-3-hardhat.git
-```
+---
 
-2. Install NPM packages:
-```console
-cd diamond-3-hardhat
-npm install
-```
+## 已实现功能 (Features)
 
-## Deployment
+我们在该钻石合约中，以 Facet 的形式逐步整合了以下 DApp 功能：
 
-```console
-npx hardhat run scripts/deploy.js
-```
+#### 1. 基础功能
+* **所有权管理 (`OwnershipFacet`)**: 基于 OpenZeppelin 的 `Ownable` 模式，管理合约的拥有者权限。
+* **钻石结构审查 (`DiamondLoupeFacet`)**: 提供标准的 "Loupe" 功能，允许任何人查询钻石当前拥有哪些 Facet 以及每个 Facet 包含了哪些函数。
 
-### How the scripts/deploy.js script works
+#### 2. 消息存储 (`MessageFacet` & `MessageFacetV2`)
+* 一个简单的状态管理范例，用于演示钻石升级中最基本的操作。
+* 实现了 `setMessage` 和 `getMessage` 函数。
+* 通过 `MessageFacetV2` 完整演示了**替换 (Replace)** 和**移除 (Remove)** Facet 的标准流程。
 
-1. DiamondCutFacet is deployed.
-1. The diamond is deployed, passing as arguments to the diamond constructor the owner address of the diamond and the DiamondCutFacet address. DiamondCutFacet has the `diamondCut` external function which is used to upgrade the diamond to add more functions.
-1. The `DiamondInit` contract is deployed. This contains an `init` function which is called on the first diamond upgrade to initialize state of some state variables. Information on how the `diamondCut` function works is here: https://eips.ethereum.org/EIPS/eip-2535#diamond-interface
-1. Facets are deployed.
-1. The diamond is upgraded. The `diamondCut` function is used to add functions from facets to the diamond. In addition the `diamondCut` function calls the `init` function from the `DiamondInit` contract using `delegatecall` to initialize state variables.
+#### 3. 代币质押 (`StakingFacet`)
+* 一个功能性的 ERC20 代币质押池。
+* 用户可以质押指定的代币（Staking Token）。
+* 合约根据时间和总质押量，按比例为用户计算并累积奖励代币（Rewards Token）。
+* 用户可以随时领取奖励或取消质押。
 
-How a diamond is deployed is not part of the EIP-2535 Diamonds standard. This implementation shows a usable example. 
+#### 4. 代币空投 (Airdrop)
+实现了两种业界最主流的空投模式：
+* **推送模式 (`AirdropPushFacet`)**:
+    * 由项目方（合约拥有者）发起，直接将代币批量发送到白名单用户的钱包。
+    * 对用户友好（无需操作），但对项目方 Gas 成本极高，适用于小规模空投。
+* **拉取模式 (`AirdropPullFacet`)**:
+    * 基于**默克尔树 (Merkle Tree)** 的高效空投方案。
+    * 项目方只需在链上存储一个 `bytes32` 的 Merkle Root，Gas 成本极低。
+    * 白名单用户凭借自己的 Merkle Proof 主动到合约领取（Claim）空投，自行支付 Gas。
+    * 这是大规模空投的行业标准。
 
-## Run tests:
-```console
-npx hardhat test
-```
+#### 5. 去中心化借贷 (`LendingFacet`)
+* 一个简化版的 Aave / Compound 模式的借贷协议。
+* **核心功能**:
+    * **存款 (Deposit)**: 用户存入资产作为抵押品。
+    * **借款 (Borrow)**: 用户根据抵押品价值借出其他资产。
+    * **提款 (Withdraw)** & **还款 (Repay)**。
+* **风险管理**:
+    * **价格预言机 (Price Oracle)**: 整合了价格来源机制，兼容本地测试的 `MockPriceOracle` 和 Sepolia 测试网的 **Chainlink** 价格源。
+    * **抵押因子 (Collateral Factor)**: 为不同资产设定不同的抵押率。
+    * **健康因子 (Health Factor)**: 实现了核心风控逻辑，防止用户在仓位不健康时提取抵押品或借出更多资产。
+* **简化说明**: 为聚焦核心逻辑，此 Facet 未实现利息模型和清算机制。
 
-## Upgrade a diamond
+---
 
-Check the `scripts/deploy.js` and or the `test/diamondTest.js` file for examples of upgrades.
+## 技术栈 (Tech Stack)
+* **Solidity** (`0.8.6`)
+* **Hardhat**: 开发、测试和部署框架。
+* **Ethers.js**: 与以太坊区块链进行交互。
+* **OpenZeppelin Contracts**: 用于 ERC20、Ownable 等标准合约。
+* **MerkleTree.js**: 用于在链下生成 Merkle Tree。
 
-Note that upgrade functionality is optional. It is possible to deploy a diamond that can't be upgraded, which is a 'Single Cut Diamond'.  It is also possible to deploy an upgradeable diamond and at a later date remove its `diamondCut` function so it can't be upgraded any more.
+---
 
-Note that any number of functions from any number of facets can be added/replaced/removed on a diamond in a single transaction. In addition an initialization function can be executed in the same transaction as an upgrade to initialize any state variables required for an upgrade. This 'everything done in a single transaction' capability ensures a diamond maintains a correct and consistent state during upgrades.
+## 快速开始 (Getting Started)
 
-## Facet Information
+1.  **克隆项目**
+    ```bash
+    git clone <YOUR_REPOSITORY_URL>
+    ```
+2.  **进入目录**
+    ```bash
+    cd <PROJECT_DIRECTORY>
+    ```
+3.  **安装依赖**
+    ```bash
+    npm install
+    ```
 
-The `contracts/Diamond.sol` file shows an example of implementing a diamond.
+---
 
-The `contracts/facets/DiamondCutFacet.sol` file shows how to implement the `diamondCut` external function.
+## 使用方法 (Usage)
 
-The `contracts/facets/DiamondLoupeFacet.sol` file shows how to implement the four standard loupe functions.
+1.  **编译合约**
+    ```bash
+    npx hardhat compile
+    ```
+2.  **启动本地节点**
+    ```bash
+    npx hardhat node
+    ```
+3.  **执行部署与升级脚本**
+    在**新的终端**中，按顺序执行脚本来部署和扩展你的 Diamond。
+    ```bash
+    # 部署初始 Diamond
+    npx hardhat run scripts/deploy.js --network localhost
+    
+    # 添加质押功能
+    npx hardhat run scripts/addStakingFacet.js --network localhost
 
-The `contracts/libraries/LibDiamond.sol` file shows how to implement Diamond Storage and a `diamondCut` internal function.
+    # 添加空投功能
+    npx hardhat run scripts/addAirdropFacets.js --network localhost
+    
+    # ... 执行其他替换或移除脚本
+    ```
 
-The `scripts/deploy.js` file shows how to deploy a diamond.
+---
 
-The `test/diamondTest.js` file gives tests for the `diamondCut` function and the Diamond Loupe functions.
+## 许可证 (License)
+本项目采用 [MIT License](LICENSE)。
 
-## How to Get Started Making Your Diamond
+<br>
+<hr>
+<br>
 
-1. Reading and understand [EIP-2535 Diamonds](https://github.com/ethereum/EIPs/issues/2535). If something is unclear let me know!
+# Multi-Functional DeFi Diamond Contract
 
-2. Use a diamond reference implementation. You are at the right place because this is the README for a diamond reference implementation.
+This is a multi-functional, upgradeable smart contract project based on the **EIP-2535 Diamond Standard**. It is designed to showcase the power and flexibility of the Diamond pattern in building complex DeFi applications.
 
-This diamond implementation is boilerplate code that makes a diamond compliant with EIP-2535 Diamonds.
+## Core Architecture: The Diamond Standard (EIP-2535)
 
-Specifically you can copy and use the [DiamondCutFacet.sol](./contracts/facets/DiamondCutFacet.sol) and [DiamondLoupeFacet.sol](./contracts/facets/DiamondLoupeFacet.sol) contracts. They implement the `diamondCut` function and the loupe functions.
+This project is built around the EIP-2535 Diamond Standard, which offers several key advantages:
 
-The [Diamond.sol](./contracts/Diamond.sol) contract could be used as is, or it could be used as a starting point and customized. This contract is the diamond. Its deployment creates a diamond. It's address is a stable diamond address that does not change.
+* **Modularity**: Each distinct feature (e.g., Staking, Lending) is encapsulated in a separate contract called a **Facet**.
+* **Upgradability**: New features can be added, existing ones replaced, and old ones removed safely and atomically through the `diamondCut` function, without requiring a full system redeployment.
+* **Bypassing Contract Size Limit**: By distributing logic across multiple Facets, the main contract (the Diamond) can have virtually unlimited functionality, overcoming the 24KB contract size limit on Ethereum.
+* **Shared Storage**: All Facets share a single state storage space, defined centrally in `LibAppStorage.sol`. This allows for seamless and efficient interaction between different functional modules.
 
-The [LibDiamond.sol](./contracts/libraries/LibDiamond.sol) library could be used as is. It shows how to implement Diamond Storage. This contract includes contract ownership which you might want to change if you want to implement DAO-based ownership or other form of contract ownership. Go for it. Diamonds can work with any kind of contract ownership strategy. This library contains an internal function version of `diamondCut` that can be used in the constructor of a diamond or other places.
+---
 
-## Calling Diamond Functions
+## Implemented Features
 
-In order to call a function that exists in a diamond you need to use the ABI information of the facet that has the function.
+The following DApp functionalities have been progressively integrated into this Diamond contract as Facets:
 
-Here is an example that uses web3.js:
+#### 1. Base Functionality
+* **Ownership Management (`OwnershipFacet`)**: Manages contract owner permissions based on OpenZeppelin's `Ownable` pattern.
+* **Diamond Loupe (`DiamondLoupeFacet`)**: Provides standard "loupe" functions, allowing anyone to query which Facets the Diamond currently has and which functions belong to each Facet.
 
-```javascript
-let myUsefulFacet = new web3.eth.Contract(MyUsefulFacet.abi, diamondAddress);
-```
+#### 2. Message Storage (`MessageFacet` & `MessageFacetV2`)
+* A simple state management example to demonstrate the fundamental upgrade operations.
+* Implements `setMessage` and `getMessage` functions.
+* Fully demonstrates the standard workflows for **Replacing** and **Removing** Facets using `MessageFacetV2`.
 
-In the code above we create a contract variable so we can call contract functions with it.
+#### 3. Token Staking (`StakingFacet`)
+* A functional ERC20 token staking pool.
+* Users can stake a specified ERC20 token.
+* The contract calculates and accrues rewards for stakers over time, distributed proportionally based on their stake.
+* Users can claim rewards or unstake their tokens at any time.
 
-In this example we know we will use a diamond because we pass a diamond's address as the second argument. But we are using an ABI from the MyUsefulFacet facet so we can call functions that are defined in that facet. MyUsefulFacet's functions must have been added to the diamond (using diamondCut) in order for the diamond to use the function information provided by the ABI of course.
+#### 4. Token Airdrop
+Implements the two most common airdrop patterns in the industry:
+* **Push Model (`AirdropPushFacet`)**:
+    * Initiated by the project owner to directly transfer tokens to a list of whitelisted user wallets.
+    * User-friendly (zero action required from users) but extremely gas-intensive for the owner, suitable for small-scale airdrops.
+* **Pull Model (`AirdropPullFacet`)**:
+    * An efficient solution based on **Merkle Trees**.
+    * The project owner only stores a single `bytes32` Merkle Root on-chain, resulting in minimal gas costs.
+    * Whitelisted users generate their unique Merkle Proof off-chain and use it to actively claim their tokens, paying the gas for the claim transaction themselves.
+    * This is the industry standard for large-scale airdrops.
 
-Similarly you need to use the ABI of a facet in Solidity code in order to call functions from a diamond. Here's an example of Solidity code that calls a function from a diamond:
+#### 5. Decentralized Lending (`LendingFacet`)
+* A simplified lending and borrowing protocol inspired by Aave and Compound.
+* **Core Functions**:
+    * **Deposit**: Users supply assets as collateral.
+    * **Borrow**: Users borrow other assets against the value of their collateral.
+    * **Withdraw** & **Repay**.
+* **Risk Management**:
+    * **Price Oracle**: Integrates a price feed mechanism, compatible with a `MockPriceOracle` for local testing and **Chainlink** price feeds for the Sepolia testnet.
+    * **Collateral Factor**: Defines different collateral ratios for different assets.
+    * **Health Factor**: Implements the core risk logic to prevent users from withdrawing collateral or borrowing more assets if their position becomes unhealthy.
+* **Simplifications**: To focus on the core logic, this Facet does not implement an interest rate model or a liquidation mechanism.
 
-```solidity
-string result = MyUsefulFacet(address(diamondContract)).getResult()
-```
+---
 
-## Get Help and Join the Community
+## Tech Stack
+* **Solidity** (`0.8.6`)
+* **Hardhat**: Development, testing, and deployment framework.
+* **Ethers.js**: For interacting with the Ethereum blockchain.
+* **OpenZeppelin Contracts**: For standard contracts like ERC20 and Ownable.
+* **MerkleTree.js**: For generating Merkle Trees off-chain.
 
-If you need help or would like to discuss diamonds then send me a message [on twitter](https://twitter.com/mudgen), or [email me](mailto:nick@perfectabstractions.com). Or join the [EIP-2535 Diamonds Discord server](https://discord.gg/kQewPw2).
+---
 
-## Useful Links
-1. [Introduction to the Diamond Standard, EIP-2535 Diamonds](https://eip2535diamonds.substack.com/p/introduction-to-the-diamond-standard)
-1. [EIP-2535 Diamonds](https://github.com/ethereum/EIPs/issues/2535)
-1. [Understanding Diamonds on Ethereum](https://dev.to/mudgen/understanding-diamonds-on-ethereum-1fb)
-1. [Solidity Storage Layout For Proxy Contracts and Diamonds](https://medium.com/1milliondevs/solidity-storage-layout-for-proxy-contracts-and-diamonds-c4f009b6903)
-1. [New Storage Layout For Proxy Contracts and Diamonds](https://medium.com/1milliondevs/new-storage-layout-for-proxy-contracts-and-diamonds-98d01d0eadb)
-1. [Upgradeable smart contracts using the Diamond Standard](https://hiddentao.com/archives/2020/05/28/upgradeable-smart-contracts-using-diamond-standard)
-1. [buidler-deploy supports diamonds](https://github.com/wighawag/buidler-deploy/)
+## Getting Started
 
-## Author
+1.  **Clone the project**
+    ```bash
+    git clone <YOUR_REPOSITORY_URL>
+    ```
+2.  **Enter the directory**
+    ```bash
+    cd <PROJECT_DIRECTORY>
+    ```
+3.  **Install dependencies**
+    ```bash
+    npm install
+    ```
 
-This example implementation was written by Nick Mudge.
+---
 
-Contact:
+## Usage
 
-- https://twitter.com/mudgen
-- nick@perfectabstractions.com
+1.  **Compile contracts**
+    ```bash
+    npx hardhat compile
+    ```
+2.  **Start a local node**
+    ```bash
+    npx hardhat node
+    ```
+3.  **Run deployment and upgrade scripts**
+    In a **new terminal**, run the scripts in sequence to deploy and extend your Diamond.
+    ```bash
+    # Deploy the initial Diamond
+    npx hardhat run scripts/deploy.js --network localhost
+    
+    # Add the StakingFacet
+    npx hardhat run scripts/addStakingFacet.js --network localhost
+
+    # Add the AirdropFacets
+    npx hardhat run scripts/addAirdropFacets.js --network localhost
+    
+    # ... run other replace or remove scripts
+    ```
+
+---
 
 ## License
-
-MIT license. See the license file.
-Anyone can use or modify this software for their purposes.
-
+This project is licensed under the [MIT License](LICENSE).
