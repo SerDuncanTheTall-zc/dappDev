@@ -28,6 +28,14 @@ struct AppStorage {
     mapping(address => uint256) rewards;
     // 记录用户的质押余额
     mapping(address => uint256) stakedBalances;
+
+    // --- 為 Airdrop Facets 添加的狀態變數 ---
+    // 空投代幣的地址
+    address airdropToken;
+    // Merkle 樹的根哈希值
+    bytes32 merkleRoot;
+    // 記錄用戶是否已領取 Pull 模式空投
+    mapping(address => bool) hasClaimed;
 }
 
 // 这个库提供了获取 Diamond 存储的方法
