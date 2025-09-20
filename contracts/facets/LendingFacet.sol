@@ -2,7 +2,7 @@
 pragma solidity ^0.8.6;
 
 import { LibAppStorage, AppStorage, TokenInfo } from "../libraries/LibAppStorage.sol";
-// *** 修正点 1：导入新的、更完整的接口 ***
+
 import "../interfaces/IERC20Metadata.sol";
 import "../interfaces/AggregatorV3Interface.sol";
 
@@ -52,7 +52,7 @@ contract LendingFacet {
         require(_amount > 0, "Lending: Amount must be > 0");
 
         (uint256 totalCollateralValue, ) = getAccountInfo(msg.sender);
-        // *** 修正点 2：使用新的接口进行类型转换 ***
+
         uint256 borrowValue = (_amount * getPrice(_token)) / (10**IERC20Metadata(_token).decimals());
         
         require(totalCollateralValue >= borrowValue, "Lending: Borrow amount exceeds collateral limit");
@@ -78,7 +78,7 @@ contract LendingFacet {
         for(uint i = 0; i < assets.length; i++) {
             address token = assets[i];
             uint256 price = getPrice(token);
-            // *** 修正点 3：使用新的接口进行类型转换 ***
+
             uint256 decimals = 10**IERC20Metadata(token).decimals();
 
             uint256 depositAmount = ds.userDeposits[_user][token];

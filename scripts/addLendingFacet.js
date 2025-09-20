@@ -2,69 +2,59 @@
 const { getSelectors, FacetCutAction } = require('./libraries/diamond.js');
 
 async function addLendingFacet () {
-    const diamondAddress = '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'; // 确保这是你的 Diamond 地址
+    const diamondAddress = 'YOUR_SEPOLIA_DIAMOND_ADDRESS'; 
     const [owner] = await ethers.getSigners();
 
-    // =================================================================
-    // --- 关键修改区域开始 ---
-    // 1. 部署所有基础设施合约
-    console.log('Deploying specific mock tokens...');
+
+    //    直接定义 Sepolia 网络上真实存在的地址
+    console.log('Using real addresses on Sepolia network...');
     
-    // 部署 CoinLillard.sol 作为 WETH 的模拟
-    const CoinLillard = await ethers.getContractFactory('CoinLillard');
-    const weth = await CoinLillard.deploy(); // Lillard 合约构造函数无需参数
-    await weth.deployed();
-
-    // 部署 CoinCJMCCO.sol 作为 DAI 的模拟
-    const CoinCJMCCO = await ethers.getContractFactory('CoinCJMCCO');
-    const dai = await CoinCJMCCO.deploy(); // CJMCCO 合约构造函数无需参数
-    await dai.deployed();
+    // Sepolia 上的 WETH 和 DAI 地址 (请从 Etherscan 确认)
+    const wethAddress = '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14'; 
+    const daiAddress = '0x68194a729C24503B198AaA4F96D692579b49132e';
     
-    // MockPriceOracle 的部署保持不变
-    const MockPriceOracle = await ethers.getContractFactory('MockPriceOracle');
-    const oracle = await MockPriceOracle.deploy();
-    await oracle.deployed();
+    // Sepolia 上的 Chainlink 价格源地址
+    const ethUsdFeedAddress = '0x694AA1769357215DE4FAC081bf1f309aDC325306';
+    const daiUsdFeedAddress = '0x14866185B1962B63C3Ea131897d2e7148AAe5695';
 
-    console.log(`CoinLillard (as WETH) deployed: ${weth.address}`);
-    console.log(`CoinCJMCCO (as DAI) deployed: ${dai.address}`);
-    console.log(`MockPriceOracle deployed: ${oracle.address}`);
-    // --- 关键修改区域结束 ---
-    // =================================================================
+    console.log(`Using WETH at: ${wethAddress}`);
+    console.log(`Using DAI at: ${daiAddress}`);
+    console.log(`Using ETH/USD feed at: ${ethUsdFeedAddress}`);
+    console.log(`Using DAI/USD feed at: ${daiUsdFeedAddress}`);
 
 
-    // 2. 在预言机中设置价格 (1 WETH = $2000, 1 DAI = $1)
-    await oracle.setPrice(weth.address, 2000 * 10**8); // 价格带 8 位小数
-    await oracle.setPrice(dai.address, 1 * 10**8);
-
-    // 3. 部署 LendingFacet
+    // 2. 部署 LendingFacet (这一步不变)
     const LendingFacet = await ethers.getContractFactory('LendingFacet');
     const lendingFacet = await LendingFacet.deploy();
     await lendingFacet.deployed();
     console.log(`LendingFacet deployed: ${lendingFacet.address}`);
 
-    // 4. 准备 cut 指令和初始化
+    // 3. 执行 DiamondCut (不再需要初始化调用，因为我们会手动设置)
     const cut = [{
         facetAddress: lendingFacet.address,
         action: FacetCutAction.Add,
         functionSelectors: getSelectors(lendingFacet)
     }];
     
-    // 假设你在 LendingFacet 中增加了一个 setPriceOracle 的初始化函数
-    const lendingInterface = new ethers.utils.Interface(LendingFacet.interface.format(ethers.utils.FormatTypes.full));
-    const functionCall = lendingInterface.encodeFunctionData('setPriceOracle', [oracle.address]);
-    
-    // 5. 执行 DiamondCut
     const diamondCut = await ethers.getContractAt('IDiamondCut', diamondAddress);
-    const tx = await diamondCut.diamondCut(cut, lendingFacet.address, functionCall);
+    const tx = await diamondCut.diamondCut(cut, ethers.constants.AddressZero, '0x');
     await tx.wait();
     console.log('✅ Diamond cut complete: LendingFacet added.');
 
-    // 6. 透过 Diamond 地址调用新功能，来支持代币
-    console.log('Configuring supported tokens...');
+    // 4. 通过 Diamond 地址调用管理功能，配置支持的代币和价格源
+    console.log('Configuring supported tokens and price feeds...');
     const lendingFacetOnDiamond = await ethers.getContractAt('LendingFacet', diamondAddress);
-    await (await lendingFacetOnDiamond.supportToken(weth.address, 8000)).wait(); // 80% 抵押率
-    await (await lendingFacetOnDiamond.supportToken(dai.address, 7500)).wait(); // 75% 抵押率
-    console.log('✅ CoinLillard (WETH) and CoinCJMCCO (DAI) are now supported tokens.');
+    
+    // 支持 WETH 并设置其价格源
+    await (await lendingFacetOnDiamond.supportToken(wethAddress, 8000)).wait(); // 80% 抵押率
+    await (await lendingFacetOnDiamond.setPriceFeed(wethAddress, ethUsdFeedAddress)).wait();
+    console.log(`✅ WETH (collateral factor 80%) supported with feed ${ethUsdFeedAddress}`);
+
+    // 支持 DAI 并设置其价格源
+    await (await lendingFacetOnDiamond.supportToken(daiAddress, 7500)).wait(); // 75% 抵押率
+    await (await lendingFacetOnDiamond.setPriceFeed(daiAddress, daiUsdFeedAddress)).wait();
+    console.log(`✅ DAI (collateral factor 75%) supported with feed ${daiUsdFeedAddress}`);
+
 }
 
 if (require.main === module) {
