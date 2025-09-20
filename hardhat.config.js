@@ -28,6 +28,10 @@ module.exports = {
     sepolia: { // <<<< 添加这个 sepolia 网络配置
       url: `https://sepolia.infura.io/v3/${process.env.INFURA_API_KEY}`,
       accounts: [process.env.PRIVATE_KEY]
+    },
+    polygonMainnet:{
+      url: `https://polygon-mainnet.infura.io/v3/${process.env.POLYGON_INFURA_API_KEY}`,
+      accounts: [process.env.PRIVATE_KEY]
     }
   },
   etherscan: {
