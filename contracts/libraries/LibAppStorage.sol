@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 import "../facets/test/MockPriceOracle.sol"; // 導入接口;
-
+import "../interfaces/AggregatorV3Interface.sol";
 struct TokenInfo {
     bool isSupported;
     uint256 collateralFactor; // 抵押因子，例如 8000 代表 80%
@@ -51,6 +51,15 @@ struct AppStorage {
     mapping(address => mapping(address => uint256)) userDeposits;
     // 映射：用戶地址 => 代幣地址 => 借款金額
     mapping(address => mapping(address => uint256)) userBorrows;
+
+    // 映射：代币地址 => Chainlink 价格源地址
+    mapping(address => AggregatorV3Interface) priceFeeds;
+
+    // --- 新增：用于动态遍历用户资产 ---
+    // 映射：用户地址 => 他/她交互过的代币地址列表
+    mapping(address => address[]) userAssets;
+    // 映射：用户地址 => 代币地址 => 是否已在列表中 (用于避免重复添加)
+    mapping(address => mapping(address => bool)) hasInteracted;
 }
 
 // 这个库提供了获取 Diamond 存储的方法
