@@ -1,64 +1,72 @@
 /* global ethers */
-const { getSelectors, FacetCutAction } = require('./libraries/diamond.js')
+const { getSelectors, FacetCutAction } = require('./libraries/diamond.js');
 
 async function addLendingFacet () {
-    const diamondAddress = '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512' // 確保這是你的 Diamond 地址
-    const [owner] = await ethers.getSigners()
+    const diamondAddress = '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'; // 确保这是你的 Diamond 地址
+    const [owner] = await ethers.getSigners();
 
-    // 1. 部署所有基礎設施合約
-    console.log('Deploying mocks...')
-    const ERC20Mock = await ethers.getContractFactory('ERC20Mock')
-    const weth = await ERC20Mock.deploy("Wrapped Ether", "WETH")
-    await weth.deployed()
-    const dai = await ERC20Mock.deploy("Dai Stablecoin", "DAI")
-    await dai.deployed()
+    // =================================================================
+    // --- 关键修改区域开始 ---
+    // 1. 部署所有基础设施合约
+    console.log('Deploying specific mock tokens...');
     
-    const MockPriceOracle = await ethers.getContractFactory('MockPriceOracle')
-    const oracle = await MockPriceOracle.deploy(owner.address)
-    await oracle.deployed()
-    console.log(`Mock WETH deployed: ${weth.address}`)
-    console.log(`Mock DAI deployed: ${dai.address}`)
-    console.log(`MockPriceOracle deployed: ${oracle.address}`)
+    // 部署 CoinLillard.sol 作为 WETH 的模拟
+    const CoinLillard = await ethers.getContractFactory('CoinLillard');
+    const weth = await CoinLillard.deploy(); // Lillard 合约构造函数无需参数
+    await weth.deployed();
 
-    // 2. 在預言機中設置價格 (1 WETH = $2000, 1 DAI = $1)
-    await oracle.setPrice(weth.address, 2000 * 10**8) // 價格帶 8 位小數
-    await oracle.setPrice(dai.address, 1 * 10**8)
+    // 部署 CoinCJMCCO.sol 作为 DAI 的模拟
+    const CoinCJMCCO = await ethers.getContractFactory('CoinCJMCCO');
+    const dai = await CoinCJMCCO.deploy(); // CJMCCO 合约构造函数无需参数
+    await dai.deployed();
+    
+    // MockPriceOracle 的部署保持不变
+    const MockPriceOracle = await ethers.getContractFactory('MockPriceOracle');
+    const oracle = await MockPriceOracle.deploy();
+    await oracle.deployed();
+
+    console.log(`CoinLillard (as WETH) deployed: ${weth.address}`);
+    console.log(`CoinCJMCCO (as DAI) deployed: ${dai.address}`);
+    console.log(`MockPriceOracle deployed: ${oracle.address}`);
+    // --- 关键修改区域结束 ---
+    // =================================================================
+
+
+    // 2. 在预言机中设置价格 (1 WETH = $2000, 1 DAI = $1)
+    await oracle.setPrice(weth.address, 2000 * 10**8); // 价格带 8 位小数
+    await oracle.setPrice(dai.address, 1 * 10**8);
 
     // 3. 部署 LendingFacet
-    const LendingFacet = await ethers.getContractFactory('LendingFacet')
-    const lendingFacet = await LendingFacet.deploy()
-    await lendingFacet.deployed()
-    console.log(`LendingFacet deployed: ${lendingFacet.address}`)
+    const LendingFacet = await ethers.getContractFactory('LendingFacet');
+    const lendingFacet = await LendingFacet.deploy();
+    await lendingFacet.deployed();
+    console.log(`LendingFacet deployed: ${lendingFacet.address}`);
 
-    // 4. 準備 cut 指令和初始化
+    // 4. 准备 cut 指令和初始化
     const cut = [{
         facetAddress: lendingFacet.address,
         action: FacetCutAction.Add,
         functionSelectors: getSelectors(lendingFacet)
-    }]
-    // 我們需要在 AppStorage 中設置預言機地址
-    // 這裡我們直接在 LendingFacet 中加入一個 initLending 函數來做初始化
-    const lendingInterface = new ethers.utils.Interface(LendingFacet.interface.format(ethers.utils.FormatTypes.full))
-    const functionCall = lendingInterface.encodeFunctionData('setPriceOracle', [oracle.address])
+    }];
     
-    // 5. 執行 DiamondCut
-    const diamondCut = await ethers.getContractAt('IDiamondCut', diamondAddress)
-    const tx = await diamondCut.diamondCut(cut, lendingFacet.address, functionCall)
-    await tx.wait()
-    console.log('✅ Diamond cut complete: LendingFacet added.')
+    // 假设你在 LendingFacet 中增加了一个 setPriceOracle 的初始化函数
+    const lendingInterface = new ethers.utils.Interface(LendingFacet.interface.format(ethers.utils.FormatTypes.full));
+    const functionCall = lendingInterface.encodeFunctionData('setPriceOracle', [oracle.address]);
+    
+    // 5. 执行 DiamondCut
+    const diamondCut = await ethers.getContractAt('IDiamondCut', diamondAddress);
+    const tx = await diamondCut.diamondCut(cut, lendingFacet.address, functionCall);
+    await tx.wait();
+    console.log('✅ Diamond cut complete: LendingFacet added.');
 
-    // 6. 透過 Diamond 地址調用新功能，來支持代幣
-    console.log('Configuring supported tokens...')
-    const lendingFacetOnDiamond = await ethers.getContractAt('LendingFacet', diamondAddress)
-    await (await lendingFacetOnDiamond.supportToken(weth.address, 8000)).wait() // 80% 抵押率
-    await (await lendingFacetOnDiamond.supportToken(dai.address, 7500)).wait() // 75% 抵押率
-    console.log('✅ WETH and DAI are now supported tokens.')
+    // 6. 透过 Diamond 地址调用新功能，来支持代币
+    console.log('Configuring supported tokens...');
+    const lendingFacetOnDiamond = await ethers.getContractAt('LendingFacet', diamondAddress);
+    await (await lendingFacetOnDiamond.supportToken(weth.address, 8000)).wait(); // 80% 抵押率
+    await (await lendingFacetOnDiamond.supportToken(dai.address, 7500)).wait(); // 75% 抵押率
+    console.log('✅ CoinLillard (WETH) and CoinCJMCCO (DAI) are now supported tokens.');
 }
 
-// 為了讓上面的腳本運行，你需要在 LendingFacet 中增加一個 `setPriceOracle` 函數
-// 並在 `LibAppStorage` 中增加 IPriceOracle 接口的定義
-// (提示：為簡潔，此處未展示 Init 合約，而是直接在 Facet 中加入了初始化函數)
-
 if (require.main === module) {
-  addLendingFacet().catch(console.error)
+  addLendingFacet().catch(console.error);
 }

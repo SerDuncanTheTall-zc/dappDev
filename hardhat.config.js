@@ -1,7 +1,8 @@
 
 /* global ethers task */
-require('@nomiclabs/hardhat-waffle')
-
+require("@nomicfoundation/hardhat-toolbox");
+require("@nomiclabs/hardhat-etherscan");
+require("dotenv").config(); // <<<< 加入這一行
 // This is a sample Hardhat task. To learn how to create your own go to
 // https://hardhat.org/guides/create-task.html
 task('accounts', 'Prints the list of accounts', async () => {
@@ -19,11 +20,17 @@ task('accounts', 'Prints the list of accounts', async () => {
  * @type import('hardhat/config').HardhatUserConfig
  */
 module.exports = {
-  solidity: '0.8.6',
-  settings: {
-    optimizer: {
-      enabled: true,
-      runs: 200
+  solidity: "0.8.6",
+  networks: {
+    localhost: { // 本地网络配置保留
+      url: "http://127.0.0.1:8545/"
+    },
+    sepolia: { // <<<< 添加这个 sepolia 网络配置
+      url: `https://sepolia.infura.io/v3/${process.env.INFURA_API_KEY}`,
+      accounts: [process.env.PRIVATE_KEY]
     }
+  },
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY
   }
 }

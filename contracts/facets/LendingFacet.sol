@@ -3,9 +3,22 @@ pragma solidity ^0.8.6;
 
 import { LibAppStorage, AppStorage, TokenInfo } from "../libraries/LibAppStorage.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "../test/MockPriceOracle.sol"; // 導入接口
+import "../facets/test/MockPriceOracle.sol"; // 導入接口;
 
 contract LendingFacet {
+
+    // --- 新增的初始化函数 ---
+    /**
+     * @notice 设置价格预言机的地址（只能由 owner 调用一次）
+     * @param _oracleAddress 价格预言机的合约地址
+     */
+    function setPriceOracle(address _oracleAddress) external {
+        AppStorage storage ds = LibAppStorage.layout();
+        require(msg.sender == ds.owner, "Lending: Not owner");
+        require(address(ds.priceOracle) == address(0), "Lending: Oracle already set");
+        ds.priceOracle = IPriceOracle(_oracleAddress);
+    }
+
     // --- 管理功能 ---
     function supportToken(address _token, uint256 _collateralFactor) external {
         AppStorage storage ds = LibAppStorage.layout();
